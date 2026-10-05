@@ -1,5 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
+import '../../providers/auth_provider.dart';
+
+const List<String> _kLanguages = [
+  'English',
+  'Spanish',
+  'French',
+  'German',
+  'Japanese',
+  'Mandarin',
+  'Italian',
+  'Russian',
+  'Portuguese',
+  'Hindi',
+];
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -12,6 +27,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  String _nativeLanguage = 'English';
+  String _targetLanguage = 'Spanish';
   bool _obscurePassword = true;
 
   @override
@@ -143,6 +160,52 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: _nativeLanguage,
+                    dropdownColor: AppColors.cardDark,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'Native Language (Fluent)',
+                      labelStyle: const TextStyle(color: AppColors.textSecondaryDark),
+                      prefixIcon: const Icon(Icons.language, color: AppColors.primaryLight),
+                      filled: true,
+                      fillColor: AppColors.cardDark,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.borderDark),
+                      ),
+                    ),
+                    items: _kLanguages.map((lang) {
+                      return DropdownMenuItem(value: lang, child: Text(lang));
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) setState(() => _nativeLanguage = val);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: _targetLanguage,
+                    dropdownColor: AppColors.cardDark,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'Target Language (Learning)',
+                      labelStyle: const TextStyle(color: AppColors.textSecondaryDark),
+                      prefixIcon: const Icon(Icons.school_outlined, color: AppColors.primaryLight),
+                      filled: true,
+                      fillColor: AppColors.cardDark,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.borderDark),
+                      ),
+                    ),
+                    items: _kLanguages.map((lang) {
+                      return DropdownMenuItem(value: lang, child: Text(lang));
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) setState(() => _targetLanguage = val);
+                    },
+                  ),
                   const SizedBox(height: 24),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -151,8 +214,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       minimumSize: const Size.fromHeight(50),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    onPressed: () {
-                      Navigator.pushReplacementNamed(context, '/');
+                    onPressed: () async {
+                      final username = _usernameController.text.trim();
+                      final email = _emailController.text.trim();
+                      final password = _passwordController.text.trim();
+
+                      if (username.isEmpty || email.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please fill in your username and email.'),
+                            backgroundColor: Color(0xFFBA1A1A),
+                          ),
+                        );
+                        return;
+                      }
+
+                      final nav = Navigator.of(context);
+                      final auth = Provider.of<AuthProvider>(context, listen: false);
+                      await auth.register(
+                        username: username,
+                        email: email,
+                        password: password.isEmpty ? 'password123' : password,
+                        nativeLanguage: _nativeLanguage,
+                        targetLanguage: _targetLanguage,
+                      );
+
+                      nav.pushReplacementNamed('/home');
                     },
                     child: const Text('Register & Continue', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   ),

@@ -60,20 +60,45 @@ class SignalingManager:
             "target_lang": target_lang,
         }
 
-        # Check for a reciprocal match in the waiting queue
+        my_native = (native_lang or "").strip().lower()
+        my_target = (target_lang or "").strip().lower()
+
+        # Check for a match in the waiting queue:
+        # Tier 1: Perfect reciprocal match (User A native == User B target AND User A target == User B native)
+        # Tier 2: Compatible match (User A target == User B target, or one speaks what other is learning)
         matched_peer_id = None
+        
+        # Pass 1: Reciprocal
         for waiting_id in self.waiting_queue:
-            if waiting_id == user_id:
+            if str(waiting_id) == str(user_id):
                 continue
             peer_profile = self.user_profiles.get(waiting_id)
             if not peer_profile:
                 continue
 
-            # Reciprocal matching: User A native == User B target AND User A target == User B native
-            if (peer_profile.get("native_lang") == target_lang and
-                peer_profile.get("target_lang") == native_lang):
+            peer_native = (peer_profile.get("native_lang") or "").strip().lower()
+            peer_target = (peer_profile.get("target_lang") or "").strip().lower()
+
+            if peer_native == my_target and peer_target == my_native:
                 matched_peer_id = waiting_id
                 break
+
+        # Pass 2: Co-learning / Compatible if no reciprocal match yet
+        if not matched_peer_id:
+            for waiting_id in self.waiting_queue:
+                if str(waiting_id) == str(user_id):
+                    continue
+                peer_profile = self.user_profiles.get(waiting_id)
+                if not peer_profile:
+                    continue
+
+                peer_native = (peer_profile.get("native_lang") or "").strip().lower()
+                peer_target = (peer_profile.get("target_lang") or "").strip().lower()
+
+                # Both practicing the same target language or complementary
+                if peer_target == my_target or peer_native == my_target or peer_target == my_native:
+                    matched_peer_id = waiting_id
+                    break
 
         if matched_peer_id:
             # Remove matched peer from queue

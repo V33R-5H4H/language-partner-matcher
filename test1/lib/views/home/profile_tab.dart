@@ -498,9 +498,34 @@ class _ProfileTabState extends State<ProfileTab> {
                   );
                 },
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
 
-              // 5. WhatsApp Security Footer
+              // 5. Account Actions (Log Out / Switch Account)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFEF5350),
+                      side: const BorderSide(color: Color(0xFFEF5350), width: 1.2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () async {
+                      await authProvider.logout();
+                      if (context.mounted) {
+                        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+                      }
+                    },
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Log Out / Switch Account', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // 6. WhatsApp Security Footer
               const Center(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

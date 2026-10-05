@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
+import '../../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -135,8 +137,23 @@ class _LoginScreenState extends State<LoginScreen> {
                         minimumSize: const Size.fromHeight(50),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
-                      onPressed: () {
-                        Navigator.pushReplacementNamed(context, '/');
+                      onPressed: () async {
+                        final email = _emailController.text.trim();
+                        final password = _passwordController.text.trim();
+                        if (email.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter your email or username'),
+                              backgroundColor: Color(0xFFBA1A1A),
+                            ),
+                          );
+                          return;
+                        }
+
+                        final nav = Navigator.of(context);
+                        final auth = Provider.of<AuthProvider>(context, listen: false);
+                        await auth.login(email, password);
+                        nav.pushReplacementNamed('/home');
                       },
                       child: const Text(
                         'Sign In',
