@@ -1,0 +1,44 @@
+import 'package:flutter/foundation.dart';
+
+class ApiEndpoints {
+  // Configurable base URLs with platform-aware smart defaults
+  static String get baseUrl {
+    const custom = String.fromEnvironment('API_BASE_URL');
+    if (custom.isNotEmpty) return custom;
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8000';
+    }
+    return 'http://localhost:8000';
+  }
+
+  static String get wsUrl {
+    const customWs = String.fromEnvironment('WS_BASE_URL');
+    if (customWs.isNotEmpty) return customWs;
+    final base = baseUrl;
+    if (base.startsWith('https://')) {
+      return base.replaceFirst('https://', 'wss://');
+    }
+    return base.replaceFirst('http://', 'ws://');
+  }
+
+  // Auth endpoints
+  static String get login => '$baseUrl/api/v1/auth/login';
+  static String get register => '$baseUrl/api/v1/auth/register';
+  static String get me => '$baseUrl/api/v1/auth/me';
+
+  // Matchmaking endpoints
+  static String get enqueueMatch => '$baseUrl/api/v1/match/enqueue';
+  static String get cancelMatch => '$baseUrl/api/v1/match/cancel';
+  static String get matchStatus => '$baseUrl/api/v1/match/status';
+
+  // Metadata endpoints
+  static String get languages => '$baseUrl/api/v1/languages';
+  static String get userProfile => '$baseUrl/api/v1/users/profile';
+
+  // WebSocket signaling endpoint
+  static String signalingSocket(String userId, String token) =>
+      '$wsUrl/ws/signaling/$userId?token=$token';
+
+  // WebRTC ICE & TURN Servers
+  static String get iceServers => '$baseUrl/api/v1/webrtc/ice-servers';
+}

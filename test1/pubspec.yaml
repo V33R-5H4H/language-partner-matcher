@@ -1,0 +1,35 @@
+name: test1
+description: "Language Partner Matcher - Real-time conversational practice platform."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  provider: ^6.1.2
+  flutter_webrtc: ^0.12.0
+  web_socket_channel: ^3.0.3
+  sqflite: ^2.3.3+1
+  sqflite_common_ffi: ^2.3.3
+  path_provider: ^2.1.2
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.2.2
+  intl: ^0.19.0
+  flutter_local_notifications: ^22.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/

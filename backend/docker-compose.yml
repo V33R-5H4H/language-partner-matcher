@@ -1,0 +1,56 @@
+services:
+  fastapi_backend:
+    build: .
+    container_name: langmatcher_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres_db:5432/langmatcher
+      - REDIS_URL=redis://redis_cache:6379/0
+      - JWT_SECRET_KEY=local_development_secret_key_change_in_production_123456
+      - ENVIRONMENT=development
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: langmatcher_postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=langmatcher
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d langmatcher"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis_cache:
+    image: redis:7-alpine
+    container_name: langmatcher_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

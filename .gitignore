@@ -1,0 +1,54 @@
+# ==========================================
+# Root .gitignore - Language Partner Matcher
+# ==========================================
+
+# Environment variables & secrets
+.env
+.env.prod
+.env.local
+*.pem
+*.key
+
+# Python & FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+*.sqlite3
+*.db
+
+# Docker volumes
+postgres_data/
+redis_data/
+postgres_prod_data/
+redis_prod_data/
+
+# Flutter & Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+*.lock.bak
+
+# Android
+**/android/.gradle/
+**/android/captures/
+**/android/gradle/
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/**/*.apk
+**/android/**/*.aab
+
+# Windows desktop
+**/windows/flutter/ephemeral/
+**/windows/**/*.vcxproj.user
+
+# IDEs & System
+.idea/
+.vscode/
+*.swp
+*.DS_Store
+Thumbs.db

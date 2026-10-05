@@ -1,0 +1,68 @@
+services:
+  # 1. FastAPI Application & WebSocket Signaling
+  fastapi_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: langmatcher_backend_prod
+    restart: always
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres_db:5432/${POSTGRES_DB:-langmatcher}
+      - REDIS_URL=redis://redis_cache:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-production_secret_key_change_me_987654321}
+      - TURN_DOMAIN=${TURN_DOMAIN:-turn.langmatcher.com}
+      - TURN_SHARED_SECRET=${TURN_SHARED_SECRET:-coturn_production_shared_secret_789xyz}
+      - ENVIRONMENT=production
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+
+  # 2. Managed PostgreSQL Database
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: langmatcher_postgres_prod
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-langmatcher}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-langmatcher}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 3. Redis In-Memory Cache & Pub/Sub Matchmaking
+  redis_cache:
+    image: redis:7-alpine
+    container_name: langmatcher_redis_prod
+    restart: always
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 4. Coturn STUN/TURN Media Relay Server (For Symmetric NAT / Firewall Traversal)
+  coturn_turn:
+    build:
+      context: ./coturn
+      dockerfile: Dockerfile
+    container_name: langmatcher_coturn_prod
+    restart: always
+    network_mode: "host" # High-throughput host networking for WebRTC media relay
+    environment:
+      - TURN_SHARED_SECRET=${TURN_SHARED_SECRET:-coturn_production_shared_secret_789xyz}
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
