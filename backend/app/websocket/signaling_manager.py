@@ -18,11 +18,22 @@ class SignalingManager:
     async def connect(self, user_id: str, websocket: WebSocket):
         await websocket.accept()
         self.active_connections[user_id] = websocket
+        # Ensure user is NOT in discovery queue on connect until they explicitly start discovery
+        if user_id in self.waiting_queue:
+            self.waiting_queue.remove(user_id)
         logger.info(f"User {user_id} connected via WebSocket. Active: {len(self.active_connections)}")
 
     async def disconnect(self, user_id: str) -> Optional[str]:
         if user_id in self.waiting_queue:
             self.waiting_queue.remove(user_id)
+
+        # Notify waiting peers that this user is gone
+        for wid in list(self.waiting_queue):
+            if wid in self.active_connections and wid != user_id:
+                await self.send_personal_message({
+                    "type": "peer_left_radar",
+                    "peer_id": user_id,
+                }, wid)
 
         room_id = self.user_rooms.pop(user_id, None)
         if room_id:
@@ -30,10 +41,6 @@ class SignalingManager:
             other_peers = [p for p, r in list(self.user_rooms.items()) if r == room_id]
             for p in other_peers:
                 self.user_rooms.pop(p, None)
-                if p in self.active_connections and p in self.user_profiles:
-                    if p not in self.waiting_queue:
-                        self.waiting_queue.append(p)
-                        logger.info(f"Re-enqueued peer {p} back into queue after partner {user_id} disconnected.")
                 await self.send_personal_message({
                     "type": "peer_left_radar",
                     "peer_id": user_id,

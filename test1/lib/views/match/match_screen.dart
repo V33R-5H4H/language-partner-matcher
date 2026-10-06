@@ -111,6 +111,7 @@ class _MatchScreenState extends State<MatchScreen>
       final type = data['type'];
 
       if (type == 'peers_discovered') {
+        if (!_isSearching) return;
         final List rawPeers = data['peers'] ?? [];
         final angles = [0.5, 1.3, 2.1, 2.9, 3.7, 4.5, 5.3, 5.9];
         final radii = [0.65, 0.78, 0.60, 0.85, 0.72];
@@ -167,6 +168,7 @@ class _MatchScreenState extends State<MatchScreen>
           );
         }
       } else if (type == 'peer_joined_radar' || type == 'match_found') {
+        if (!_isSearching) return;
         final p = data['peer'] ?? data;
         final peerId = p['peer_id'] ?? '';
 
@@ -396,6 +398,9 @@ class _MatchScreenState extends State<MatchScreen>
 
   @override
   void dispose() {
+    if (_isSearching) {
+      _cancelSearch();
+    }
     _radarController.dispose();
     _searchTimer?.cancel();
     _wsSubscription?.cancel();
