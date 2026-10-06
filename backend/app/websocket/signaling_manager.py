@@ -87,7 +87,7 @@ class SignalingManager:
         if user_id not in self.waiting_queue:
             self.waiting_queue.append(user_id)
 
-        # Collect all compatible active peers currently searching on radar
+        # Collect strictly reciprocal matching peers currently searching on radar
         compatible_peers = []
         for waiting_id in self.waiting_queue:
             if str(waiting_id) == str(user_id):
@@ -99,34 +99,33 @@ class SignalingManager:
             peer_native = (peer_profile.get("native_lang") or "").strip().lower()
             peer_target = (peer_profile.get("target_lang") or "").strip().lower()
 
-            is_reciprocal = (peer_native == my_target and peer_target == my_native)
-            # Compatible if reciprocal, native mentor, learner of user's language, or co-learner
-            is_compatible = (
-                is_reciprocal or
-                (peer_native == my_target and my_target != "") or
-                (peer_target == my_native and my_native != "") or
-                (peer_target == my_target and my_target != "")
+            # Strict reciprocal tandem match:
+            # My Native == Peer's Target AND My Target == Peer's Native
+            is_reciprocal = (
+                peer_native == my_target and
+                peer_target == my_native and
+                my_native != "" and
+                my_target != ""
             )
 
-            if is_compatible:
+            if is_reciprocal:
                 compatible_peers.append({
                     "peer_id": waiting_id,
                     "peer_username": peer_profile.get("username", "Language Partner"),
-                    "peer_native_lang": peer_profile.get("native_lang", target_lang),
-                    "peer_target_lang": peer_profile.get("target_lang", native_lang),
-                    "is_reciprocal": is_reciprocal,
-                    "is_compatible": is_compatible,
+                    "peer_native_lang": peer_profile.get("native_lang", ""),
+                    "peer_target_lang": peer_profile.get("target_lang", ""),
+                    "is_reciprocal": True,
                     "room_id": f"room_{user_id}_{waiting_id}",
                 })
 
         if compatible_peers:
-            # Send all compatible peers discovered to the searching user immediately
+            # Send all reciprocal peers discovered to the searching user immediately
             await self.send_personal_message({
                 "type": "peers_discovered",
                 "peers": compatible_peers,
             }, user_id)
 
-            # Broadcast peer_joined_radar to every active compatible peer on the radar
+            # Broadcast peer_joined_radar to every active reciprocal peer on the radar
             for cp in compatible_peers:
                 pid = cp["peer_id"]
                 await self.send_personal_message({
@@ -136,15 +135,14 @@ class SignalingManager:
                         "peer_username": username,
                         "peer_native_lang": native_lang,
                         "peer_target_lang": target_lang,
-                        "is_reciprocal": cp["is_reciprocal"],
-                        "is_compatible": cp["is_compatible"],
+                        "is_reciprocal": True,
                         "room_id": cp["room_id"],
                     },
                 }, pid)
 
-            logger.info(f"User {user_id} discovered {len(compatible_peers)} compatible partner(s) on radar.")
+            logger.info(f"User {user_id} discovered {len(compatible_peers)} reciprocal partner(s) on radar.")
         else:
-            logger.info(f"User {user_id} enqueued (Native: {native_lang}, Target: {target_lang}). Waiting for compatible partners...")
+            logger.info(f"User {user_id} enqueued (Native: {native_lang}, Target: {target_lang}). Waiting for reciprocal partner ({target_lang} -> {native_lang})...")
 
     async def cancel_search(self, user_id: str):
         if user_id in self.waiting_queue:
