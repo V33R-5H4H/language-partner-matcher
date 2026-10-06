@@ -156,29 +156,60 @@ class _VideoCallScreenState extends State<VideoCallScreen>
   }
 
   void _listenForRemoteCallEnded() {
+    final callPeerId = widget.match?.peerId ?? '';
+    final callRoomId = widget.match?.roomId ?? '';
+
     _wsSubscription = WebSocketService.instance.messages.listen((event) {
       final type = event['type'];
-      if (type == 'call_ended' ||
-          type == 'peer_disconnected' ||
-          type == 'call_declined' ||
-          type == 'peer_left_radar' ||
-          type == 'peer_unavailable') {
+
+      // Determine if this event is from our call peer
+      final fromPeer = (event['from'] ?? event['peer_id'] ?? '').toString();
+      final eventRoom = (event['room_id'] ?? '').toString();
+      final isFromCallPeer = callPeerId.isEmpty || fromPeer == callPeerId;
+      final isOurRoom = callRoomId.isEmpty || eventRoom == callRoomId || eventRoom.isEmpty;
+
+      if (type == 'call_ended' || type == 'peer_disconnected') {
+        // Only end the call if it's from our specific peer or room
+        if (!isFromCallPeer && !isOurRoom) return;
         if (mounted) {
-          final isDeclined = type == 'call_declined';
-          final isUnavailable = type == 'peer_unavailable' || type == 'peer_left_radar';
-          String msg = 'Partner ended the call';
-          if (isDeclined) msg = 'Partner declined the call';
-          if (isUnavailable) msg = 'Partner went offline or stopped scanning';
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(msg),
+            const SnackBar(
+              content: Text('Partner ended the call'),
               backgroundColor: AppColors.danger,
-              duration: const Duration(seconds: 3),
+              duration: Duration(seconds: 3),
             ),
           );
           _endCall(isRemoteTriggered: true);
         }
-      } else if (event['type'] == 'media_state_changed') {
+      } else if (type == 'call_declined') {
+        if (!isFromCallPeer) return;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Partner declined the call'),
+              backgroundColor: AppColors.danger,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          _endCall(isRemoteTriggered: true);
+        }
+      } else if (type == 'peer_unavailable') {
+        final unavailPeer = (event['peer_id'] ?? '').toString();
+        if (unavailPeer.isNotEmpty && unavailPeer != callPeerId) return;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Partner went offline'),
+              backgroundColor: AppColors.danger,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          _endCall(isRemoteTriggered: true);
+        }
+      }
+      // NOTE: peer_left_radar is a DISCOVERY event only — do NOT end calls on it
+
+      if (type == 'media_state_changed') {
         if (mounted) {
           setState(() {
             if (event.containsKey('is_mic_muted')) {
@@ -189,7 +220,7 @@ class _VideoCallScreenState extends State<VideoCallScreen>
             }
           });
         }
-      } else if (event['type'] == 'call_mode_changed') {
+      } else if (type == 'call_mode_changed') {
         if (mounted) {
           final remoteAudioOnly = event['is_audio_only'] == true;
           setState(() {

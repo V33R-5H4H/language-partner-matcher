@@ -4,6 +4,7 @@ from fastapi import WebSocket
 
 logger = logging.getLogger("langmatcher.signaling")
 
+
 class SignalingManager:
     def __init__(self):
         # user_id -> WebSocket
@@ -12,22 +13,24 @@ class SignalingManager:
         self.user_profiles: Dict[str, Dict[str, Any]] = {}
         # user_id -> current room_id
         self.user_rooms: Dict[str, str] = {}
-        # Matchmaking queue: list of waiting user_ids
+        # Matchmaking queue: set of user_ids actively searching
         self.waiting_queue: list[str] = []
 
     async def connect(self, user_id: str, websocket: WebSocket):
         await websocket.accept()
+        # Replace any stale connection for this user_id
         self.active_connections[user_id] = websocket
-        # Ensure user is NOT in discovery queue on connect until they explicitly start discovery
+        # Ensure user is NOT in discovery queue on connect — they must explicitly start discovery
         if user_id in self.waiting_queue:
             self.waiting_queue.remove(user_id)
         logger.info(f"User {user_id} connected via WebSocket. Active: {len(self.active_connections)}")
 
     async def disconnect(self, user_id: str) -> Optional[str]:
+        # Remove from discovery queue
         if user_id in self.waiting_queue:
             self.waiting_queue.remove(user_id)
 
-        # Notify waiting peers that this user is gone
+        # Notify all other active searching peers that this user left radar
         for wid in list(self.waiting_queue):
             if wid in self.active_connections and wid != user_id:
                 await self.send_personal_message({
@@ -35,16 +38,17 @@ class SignalingManager:
                     "peer_id": user_id,
                 }, wid)
 
+        # Notify any in-call peer that this user disconnected
         room_id = self.user_rooms.pop(user_id, None)
         if room_id:
-            # Notify peer in room that user disconnected
             other_peers = [p for p, r in list(self.user_rooms.items()) if r == room_id]
             for p in other_peers:
                 self.user_rooms.pop(p, None)
                 await self.send_personal_message({
-                    "type": "peer_left_radar",
+                    "type": "call_ended",
                     "peer_id": user_id,
                     "room_id": room_id,
+                    "reason": "partner_disconnected",
                 }, p)
 
         if user_id in self.active_connections:
@@ -56,10 +60,15 @@ class SignalingManager:
         logger.info(f"User {user_id} disconnected. Remaining active: {len(self.active_connections)}")
         return room_id
 
-    def set_user_profile(self, user_id: str, profile: Dict[str, Any]):
-        self.user_profiles[user_id] = profile
+    def _purge_dead_queue(self):
+        """Remove any user from waiting_queue whose WebSocket is no longer active."""
+        self.waiting_queue = [
+            uid for uid in self.waiting_queue
+            if uid in self.active_connections
+        ]
 
     async def enqueue_for_match(self, user_id: str, native_lang: str, target_lang: str, username: str):
+        # Update user profile
         self.user_profiles[user_id] = {
             "user_id": user_id,
             "username": username,
@@ -67,7 +76,7 @@ class SignalingManager:
             "target_lang": target_lang,
         }
 
-        # Purge any previous stale room for this user
+        # Purge any stale room association for this user
         old_room = self.user_rooms.pop(user_id, None)
         if old_room:
             for p, r in list(self.user_rooms.items()):
@@ -77,17 +86,19 @@ class SignalingManager:
         my_native = (native_lang or "").strip().lower()
         my_target = (target_lang or "").strip().lower()
 
-        # Clean out dead connections from queue first
-        valid_queue = []
-        for wid in self.waiting_queue:
-            if wid in self.active_connections and wid != user_id:
-                valid_queue.append(wid)
-        self.waiting_queue = valid_queue
+        if not my_native or not my_target:
+            logger.warning(f"User {user_id} sent empty language fields — not enqueued.")
+            return
 
+        # Purge dead connections from queue
+        self._purge_dead_queue()
+
+        # Add to queue if not already searching
         if user_id not in self.waiting_queue:
             self.waiting_queue.append(user_id)
 
-        # Collect strictly reciprocal matching peers currently searching on radar
+        # Strict reciprocal matching:
+        # I Speak A + Learn B  <->  Partner Speaks B + Learns A
         compatible_peers = []
         for waiting_id in self.waiting_queue:
             if str(waiting_id) == str(user_id):
@@ -99,33 +110,30 @@ class SignalingManager:
             peer_native = (peer_profile.get("native_lang") or "").strip().lower()
             peer_target = (peer_profile.get("target_lang") or "").strip().lower()
 
-            # Strict reciprocal tandem match:
-            # My Native == Peer's Target AND My Target == Peer's Native
-            is_reciprocal = (
-                peer_native == my_target and
-                peer_target == my_native and
-                my_native != "" and
-                my_target != ""
-            )
+            if not peer_native or not peer_target:
+                continue
 
-            if is_reciprocal:
+            # Exact reciprocal tandem: My native = Peer's target AND My target = Peer's native
+            is_match = (peer_native == my_target and peer_target == my_native)
+
+            if is_match:
                 compatible_peers.append({
                     "peer_id": waiting_id,
                     "peer_username": peer_profile.get("username", "Language Partner"),
                     "peer_native_lang": peer_profile.get("native_lang", ""),
                     "peer_target_lang": peer_profile.get("target_lang", ""),
                     "is_reciprocal": True,
-                    "room_id": f"room_{user_id}_{waiting_id}",
+                    "room_id": f"room_{min(user_id, waiting_id)}_{max(user_id, waiting_id)}",
                 })
 
         if compatible_peers:
-            # Send all reciprocal peers discovered to the searching user immediately
+            # Send full list of reciprocal partners to the requesting user
             await self.send_personal_message({
                 "type": "peers_discovered",
                 "peers": compatible_peers,
             }, user_id)
 
-            # Broadcast peer_joined_radar to every active reciprocal peer on the radar
+            # Broadcast this new user's presence to all compatible partners
             for cp in compatible_peers:
                 pid = cp["peer_id"]
                 await self.send_personal_message({
@@ -140,15 +148,24 @@ class SignalingManager:
                     },
                 }, pid)
 
-            logger.info(f"User {user_id} discovered {len(compatible_peers)} reciprocal partner(s) on radar.")
+            logger.info(
+                f"User {user_id} ({native_lang}->{target_lang}) discovered "
+                f"{len(compatible_peers)} reciprocal partner(s)."
+            )
         else:
-            logger.info(f"User {user_id} enqueued (Native: {native_lang}, Target: {target_lang}). Waiting for reciprocal partner ({target_lang} -> {native_lang})...")
+            logger.info(
+                f"User {user_id} enqueued ({native_lang}->{target_lang}). "
+                f"Waiting for partner ({target_lang}->{native_lang})..."
+            )
 
     async def cancel_search(self, user_id: str):
         if user_id in self.waiting_queue:
             self.waiting_queue.remove(user_id)
 
-        # Broadcast to all remaining active waiting users that this user left the radar
+        # Remove profile so stale data doesn't pollute future searches
+        self.user_profiles.pop(user_id, None)
+
+        # Notify all remaining searching peers that this user left radar
         for waiting_id in list(self.waiting_queue):
             if waiting_id in self.active_connections:
                 await self.send_personal_message({
@@ -156,7 +173,7 @@ class SignalingManager:
                     "peer_id": user_id,
                 }, waiting_id)
 
-        logger.info(f"User {user_id} removed from matchmaking queue.")
+        logger.info(f"User {user_id} cancelled search and left radar.")
 
     async def send_personal_message(self, message: dict, user_id: str) -> bool:
         if user_id in self.active_connections:
@@ -164,10 +181,14 @@ class SignalingManager:
                 await self.active_connections[user_id].send_json(message)
                 return True
             except Exception as e:
-                logger.error(f"Error sending message to {user_id}: {e}")
+                logger.error(f"Failed to deliver message to {user_id}: {e}. Removing stale connection.")
+                # Clean up dead connection
+                del self.active_connections[user_id]
+                if user_id in self.waiting_queue:
+                    self.waiting_queue.remove(user_id)
+                self.user_profiles.pop(user_id, None)
                 return False
         return False
 
+
 signaling_manager = SignalingManager()
-
-

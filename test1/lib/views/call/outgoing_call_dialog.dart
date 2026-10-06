@@ -97,13 +97,23 @@ class _OutgoingCallDialogState extends State<OutgoingCallDialog>
       'is_audio_only': widget.isAudioOnly,
     });
 
-    // 2. Listen for accept / decline / offline responses
+    // 2. Listen for accept / decline / offline responses SCOPED to this specific peer + room
     _wsSubscription = WebSocketService.instance.messages.listen((event) {
       if (!mounted) return;
       final type = event['type'];
 
+      // Only process responses from the specific peer we called
+      final fromPeer = event['from'] ?? event['peer_id'] ?? event['caller_id'] ?? '';
+      final eventRoomId = event['room_id'] ?? '';
+
+      // Guard: ignore events from other peers or unrelated rooms
+      final isFromOurPeer = fromPeer == _effectivePeerId || fromPeer.isEmpty;
+      final isOurRoom = eventRoomId == _roomId || eventRoomId.isEmpty;
+      if (!isFromOurPeer && !isOurRoom && type != 'peer_unavailable') return;
+
       if (type == 'call_accepted') {
         _timeoutTimer?.cancel();
+        _wsSubscription?.cancel();
         Navigator.of(context).pop();
 
         final match = MatchModel(
@@ -128,6 +138,7 @@ class _OutgoingCallDialogState extends State<OutgoingCallDialog>
         );
       } else if (type == 'call_declined') {
         _timeoutTimer?.cancel();
+        _wsSubscription?.cancel();
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -137,7 +148,10 @@ class _OutgoingCallDialogState extends State<OutgoingCallDialog>
           ),
         );
       } else if (type == 'peer_unavailable') {
+        final unavailablePeerId = event['peer_id'] ?? '';
+        if (unavailablePeerId != _effectivePeerId) return;
         _timeoutTimer?.cancel();
+        _wsSubscription?.cancel();
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -146,6 +160,21 @@ class _OutgoingCallDialogState extends State<OutgoingCallDialog>
             duration: const Duration(seconds: 3),
           ),
         );
+      } else if (type == 'call_ended') {
+        // Peer cancelled on their end before accepting
+        if (!isFromOurPeer && !isOurRoom) return;
+        _timeoutTimer?.cancel();
+        _wsSubscription?.cancel();
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${widget.peerName} cancelled the call'),
+              backgroundColor: AppColors.cardDark,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       }
     });
 

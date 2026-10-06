@@ -62,6 +62,8 @@ class _MatchScreenState extends State<MatchScreen>
 
   String _nativeLanguage = 'English';
   String _targetLanguage = 'Spanish';
+  // Stored so we can safely cancel_search in dispose() without reading context
+  String _myUserId = '';
 
   // Multi-peer discovered partner map: peerId -> DiscoveredPeerNode
   final Map<String, DiscoveredPeerNode> _discoveredPeers = {};
@@ -90,6 +92,7 @@ class _MatchScreenState extends State<MatchScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final user = Provider.of<AuthProvider>(context).currentUser;
+    _myUserId = user.userId;
     if (!_isWsConnected) {
       _initSignalingConnection(user.userId);
       _isWsConnected = true;
@@ -243,13 +246,17 @@ class _MatchScreenState extends State<MatchScreen>
   }
 
   void _cancelSearch() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final user = authProvider.currentUser;
+    // Use cached _myUserId so this is safe to call from dispose()
+    final userId = _myUserId.isNotEmpty
+        ? _myUserId
+        : (mounted ? Provider.of<AuthProvider>(context, listen: false).currentUser.userId : '');
 
-    WebSocketService.instance.send({
-      'type': 'cancel_search',
-      'user_id': user.userId,
-    });
+    if (userId.isNotEmpty) {
+      WebSocketService.instance.send({
+        'type': 'cancel_search',
+        'user_id': userId,
+      });
+    }
 
     _stopSearch();
   }
@@ -398,8 +405,12 @@ class _MatchScreenState extends State<MatchScreen>
 
   @override
   void dispose() {
-    if (_isSearching) {
-      _cancelSearch();
+    // Cancel active search without accessing context (which is unavailable in dispose)
+    if (_isSearching && _myUserId.isNotEmpty) {
+      WebSocketService.instance.send({
+        'type': 'cancel_search',
+        'user_id': _myUserId,
+      });
     }
     _radarController.dispose();
     _searchTimer?.cancel();
