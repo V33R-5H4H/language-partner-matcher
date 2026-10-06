@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class ApiEndpoints {
   // Configurable base URLs with platform-aware smart defaults
   static String get baseUrl {
