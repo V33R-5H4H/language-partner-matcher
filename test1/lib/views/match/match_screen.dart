@@ -28,6 +28,20 @@ const Map<String, String> kLanguageFlags = {
   'Hindi': '🇮🇳',
 };
 
+class DiscoveredPeerNode {
+  final MatchModel match;
+  final double angle;
+  final double radiusFraction;
+  final int latencyMs;
+
+  DiscoveredPeerNode({
+    required this.match,
+    required this.angle,
+    required this.radiusFraction,
+    required this.latencyMs,
+  });
+}
+
 class MatchScreen extends StatefulWidget {
   const MatchScreen({super.key});
 
@@ -49,11 +63,8 @@ class _MatchScreenState extends State<MatchScreen>
   String _nativeLanguage = 'English';
   String _targetLanguage = 'Spanish';
 
-  MatchModel? _discoveredMatch;
-
-  // Randomized partner position & latency
-  double _partnerAngle = 0.8;
-  int _partnerLatencyMs = 45;
+  // Multi-peer discovered partner map: peerId -> DiscoveredPeerNode
+  final Map<String, DiscoveredPeerNode> _discoveredPeers = {};
 
   @override
   void initState() {
@@ -83,7 +94,7 @@ class _MatchScreenState extends State<MatchScreen>
       _initSignalingConnection(user.userId);
       _isWsConnected = true;
     }
-    if (!_isSearching && _discoveredMatch == null) {
+    if (!_isSearching && _discoveredPeers.isEmpty) {
       final native = user.nativeLanguageName;
       final target = user.targetLanguageName;
       if (native != null && native.isNotEmpty && _nativeLanguage != native) {
@@ -98,26 +109,44 @@ class _MatchScreenState extends State<MatchScreen>
   void _initSignalingConnection(String userId) {
     _wsSubscription = WebSocketService.instance.messages.listen((data) {
       final type = data['type'];
-      if (type == 'match_found') {
-        final rng = math.Random();
-        // Distribute angle nicely avoiding direct bottom/top overlap
-        final angles = [0.4, 0.8, 1.2, 2.0, 2.4, 3.6, 4.0, 5.2, 5.6];
-        final chosenAngle = angles[rng.nextInt(angles.length)] + (rng.nextDouble() * 0.2 - 0.1);
+
+      if (type == 'peers_discovered') {
+        final List rawPeers = data['peers'] ?? [];
+        final angles = [0.5, 1.3, 2.1, 2.9, 3.7, 4.5, 5.3, 5.9];
+        final radii = [0.65, 0.78, 0.60, 0.85, 0.72];
+        final newPeers = <String, DiscoveredPeerNode>{};
+        int idx = 0;
+
+        for (final p in rawPeers) {
+          final peerId = p['peer_id'] ?? '';
+          if (peerId.isEmpty) continue;
+          final chosenAngle = angles[idx % angles.length];
+          final chosenRadius = radii[idx % radii.length];
+          idx++;
+
+          final match = MatchModel(
+            roomId: p['room_id'] ?? 'room_${userId}_$peerId',
+            peerId: peerId,
+            peerUsername: p['peer_username'] ?? 'Language Partner',
+            peerNativeLang: p['peer_native_lang'] ?? _targetLanguage,
+            peerTargetLang: p['peer_target_lang'] ?? _nativeLanguage,
+            isInitiator: true,
+          );
+
+          newPeers[peerId] = DiscoveredPeerNode(
+            match: match,
+            angle: chosenAngle,
+            radiusFraction: chosenRadius,
+            latencyMs: 25 + (math.Random().nextInt(65)),
+          );
+        }
 
         setState(() {
-          _partnerAngle = chosenAngle;
-          _partnerLatencyMs = 25 + rng.nextInt(85);
-          _discoveredMatch = MatchModel(
-            roomId: data['room_id'] ?? 'room_default',
-            peerId: data['peer_id'] ?? '',
-            peerUsername: data['peer_username'] ?? 'Language Partner',
-            peerNativeLang: data['peer_native_lang'] ?? _targetLanguage,
-            peerTargetLang: data['peer_target_lang'] ?? _nativeLanguage,
-            isInitiator: data['is_initiator'] ?? false,
-          );
+          _discoveredPeers.clear();
+          _discoveredPeers.addAll(newPeers);
         });
 
-        if (mounted) {
+        if (mounted && newPeers.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
@@ -126,66 +155,57 @@ class _MatchScreenState extends State<MatchScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Partner Discovered: ${_discoveredMatch!.peerUsername}! Tap node to call.',
+                      '${newPeers.length} Partner(s) on radar! Tap node to call.',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
               backgroundColor: const Color(0xFF202C33),
-              duration: const Duration(seconds: 4),
+              duration: const Duration(seconds: 3),
             ),
           );
         }
-      } else if (type == 'peer_left_radar') {
-        final peerId = data['peer_id'];
-        if (_discoveredMatch?.peerId == peerId || _discoveredMatch != null) {
+      } else if (type == 'peer_joined_radar' || type == 'match_found') {
+        final p = data['peer'] ?? data;
+        final peerId = p['peer_id'] ?? '';
+
+        if (peerId.isNotEmpty && !_discoveredPeers.containsKey(peerId)) {
+          final angles = [0.6, 1.4, 2.2, 3.0, 3.8, 4.6, 5.4, 6.0];
+          final chosenAngle = angles[_discoveredPeers.length % angles.length];
+          final match = MatchModel(
+            roomId: p['room_id'] ?? 'room_${userId}_$peerId',
+            peerId: peerId,
+            peerUsername: p['peer_username'] ?? 'Language Partner',
+            peerNativeLang: p['peer_native_lang'] ?? _targetLanguage,
+            peerTargetLang: p['peer_target_lang'] ?? _nativeLanguage,
+            isInitiator: true,
+          );
+
           setState(() {
-            _discoveredMatch = null;
+            _discoveredPeers[peerId] = DiscoveredPeerNode(
+              match: match,
+              angle: chosenAngle,
+              radiusFraction: 0.72,
+              latencyMs: 30 + math.Random().nextInt(60),
+            );
           });
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Partner went offline. Continuing search...'),
-                backgroundColor: Color(0xFF202C33),
-                duration: Duration(seconds: 2),
+              SnackBar(
+                content: Text('New partner joined radar: ${match.peerUsername}!'),
+                backgroundColor: const Color(0xFF202C33),
+                duration: const Duration(seconds: 3),
               ),
             );
           }
-          if (_isSearching && mounted) {
-            final authProvider = Provider.of<AuthProvider>(context, listen: false);
-            final user = authProvider.currentUser;
-            WebSocketService.instance.send({
-              'type': 'find_match',
-              'user_id': user.userId,
-              'username': user.username,
-              'native_lang': _nativeLanguage,
-              'target_lang': _targetLanguage,
-            });
-          }
         }
-      } else if (type == 'call_declined') {
-        setState(() {
-          _discoveredMatch = null;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Partner is busy. Continuing search...'),
-              backgroundColor: Color(0xFF202C33),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        if (_isSearching && mounted) {
-          final authProvider = Provider.of<AuthProvider>(context, listen: false);
-          final user = authProvider.currentUser;
-          WebSocketService.instance.send({
-            'type': 'find_match',
-            'user_id': user.userId,
-            'username': user.username,
-            'native_lang': _nativeLanguage,
-            'target_lang': _targetLanguage,
+      } else if (type == 'peer_left_radar') {
+        final peerId = data['peer_id'];
+        if (peerId != null && _discoveredPeers.containsKey(peerId)) {
+          setState(() {
+            _discoveredPeers.remove(peerId);
           });
         }
       } else if (type == 'search_cancelled') {
@@ -198,7 +218,7 @@ class _MatchScreenState extends State<MatchScreen>
     setState(() {
       _isSearching = true;
       _searchSeconds = 0;
-      _discoveredMatch = null;
+      _discoveredPeers.clear();
     });
 
     _searchTimer?.cancel();
@@ -239,12 +259,13 @@ class _MatchScreenState extends State<MatchScreen>
       setState(() {
         _isSearching = false;
         _searchSeconds = 0;
-        _discoveredMatch = null;
+        _discoveredPeers.clear();
       });
     }
   }
 
-  void _onDiscoveredNodeTapped(MatchModel match) {
+  void _onDiscoveredNodeTapped(DiscoveredPeerNode peerNode) {
+    final match = peerNode.match;
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1F2C34),
@@ -288,7 +309,7 @@ class _MatchScreenState extends State<MatchScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                'Native in $flag ${match.peerNativeLang} • Latency ${_partnerLatencyMs}ms',
+                'Native in $flag ${match.peerNativeLang} • Latency ${peerNode.latencyMs}ms',
                 style: const TextStyle(color: Color(0xFF8696A0), fontSize: 13),
               ),
               const SizedBox(height: 24),
@@ -360,7 +381,7 @@ class _MatchScreenState extends State<MatchScreen>
                     });
                     Navigator.pop(ctx);
                     setState(() {
-                      _discoveredMatch = null;
+                      _discoveredPeers.remove(match.peerId);
                     });
                   },
                   child: const Text('Decline Match', style: TextStyle(color: Color(0xFF8696A0), fontSize: 13)),
@@ -462,18 +483,6 @@ class _MatchScreenState extends State<MatchScreen>
             final centerY = constraints.maxHeight / 2;
             final radarRadius = math.min(constraints.maxWidth, constraints.maxHeight) * 0.46;
 
-            // Distance calculation with guaranteed minimum clearance (110px) to prevent overlap with central avatar
-            final minSafeDistance = (radarRadius * 0.58).clamp(105.0, 120.0);
-            final maxSafeDistance = radarRadius * 0.88;
-            final normalizedLatency = ((_partnerLatencyMs - 20) / 180.0).clamp(0.0, 1.0);
-            final double partnerDistance = minSafeDistance + (normalizedLatency * (maxSafeDistance - minSafeDistance));
-            final double partnerOffsetX = partnerDistance * math.cos(_partnerAngle);
-            final double partnerOffsetY = partnerDistance * math.sin(_partnerAngle);
-
-            final Color latencyColor = _partnerLatencyMs < 65
-                ? const Color(0xFF25D366)
-                : (_partnerLatencyMs < 130 ? const Color(0xFFFFB020) : const Color(0xFFEF5350));
-
             final user = Provider.of<AuthProvider>(context, listen: false).currentUser;
             final userInitial = user.username.isNotEmpty ? user.username[0].toUpperCase() : 'U';
 
@@ -491,14 +500,19 @@ class _MatchScreenState extends State<MatchScreen>
                   ),
                 ),
 
-                // 2. Clean Crisp Tether Line to Discovered Partner
-                if (_discoveredMatch != null)
+                // 2. Clean Crisp Tether Lines to all Discovered Partners
+                for (final peerNode in _discoveredPeers.values)
                   Positioned.fill(
                     child: CustomPaint(
                       painter: _TetherLinePainter(
                         centerOffset: Offset(centerX, centerY),
-                        targetOffset: Offset(centerX + partnerOffsetX, centerY + partnerOffsetY),
-                        color: latencyColor,
+                        targetOffset: Offset(
+                          centerX + (radarRadius * peerNode.radiusFraction) * math.cos(peerNode.angle),
+                          centerY + (radarRadius * peerNode.radiusFraction) * math.sin(peerNode.angle),
+                        ),
+                        color: peerNode.latencyMs < 65
+                            ? const Color(0xFF25D366)
+                            : (peerNode.latencyMs < 130 ? const Color(0xFFFFB020) : const Color(0xFFEF5350)),
                       ),
                     ),
                   ),
@@ -561,141 +575,164 @@ class _MatchScreenState extends State<MatchScreen>
                   ),
                 ),
 
-                // 4. Discovered Partner Node (Hit-Test Guaranteed Positioned Node)
-                if (_discoveredMatch != null)
-                  Positioned(
-                    left: (centerX + partnerOffsetX) - 48,
-                    top: (centerY + partnerOffsetY) - 44,
-                    width: 96,
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _onDiscoveredNodeTapped(_discoveredMatch!),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Stack(
-                              alignment: Alignment.bottomRight,
-                              children: [
-                                Container(
-                                  width: 54,
-                                  height: 54,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color(0xFF202C33),
-                                    border: Border.all(
-                                      color: const Color(0xFF00E676),
-                                      width: 2.2,
-                                    ),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Colors.black54,
-                                        blurRadius: 8,
-                                        offset: Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      _discoveredMatch!.peerUsername.isNotEmpty
-                                          ? _discoveredMatch!.peerUsername[0].toUpperCase()
-                                          : 'P',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  width: 14,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color(0xFF25D366),
-                                    border: Border.all(color: const Color(0xFF111B21), width: 2),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF202C33),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: const Color(0xFF2A3942)),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 6,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          _discoveredMatch!.peerUsername,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        kLanguageFlags[_discoveredMatch!.peerNativeLang] ?? '🌐',
-                                        style: const TextStyle(fontSize: 11),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 5,
-                                        height: 5,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: latencyColor,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${_partnerLatencyMs}ms',
-                                        style: TextStyle(
-                                          color: latencyColor,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                // 4. Discovered Partner Nodes (All concurrent peers positioned around the radar)
+                for (final peerNode in _discoveredPeers.values)
+                  _buildPartnerNode(
+                    peerNode: peerNode,
+                    centerX: centerX,
+                    centerY: centerY,
+                    radarRadius: radarRadius,
                   ),
               ],
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildPartnerNode({
+    required DiscoveredPeerNode peerNode,
+    required double centerX,
+    required double centerY,
+    required double radarRadius,
+  }) {
+    final match = peerNode.match;
+    final partnerDistance = radarRadius * peerNode.radiusFraction;
+    final partnerOffsetX = partnerDistance * math.cos(peerNode.angle);
+    final partnerOffsetY = partnerDistance * math.sin(peerNode.angle);
+
+    final latencyColor = peerNode.latencyMs < 65
+        ? const Color(0xFF25D366)
+        : (peerNode.latencyMs < 130 ? const Color(0xFFFFB020) : const Color(0xFFEF5350));
+
+    return Positioned(
+      left: (centerX + partnerOffsetX) - 48,
+      top: (centerY + partnerOffsetY) - 44,
+      width: 96,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _onDiscoveredNodeTapped(peerNode),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF202C33),
+                      border: Border.all(
+                        color: const Color(0xFF00E676),
+                        width: 2.2,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black54,
+                          blurRadius: 8,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        match.peerUsername.isNotEmpty
+                            ? match.peerUsername[0].toUpperCase()
+                            : 'P',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF25D366),
+                      border: Border.all(color: const Color(0xFF111B21), width: 2),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF202C33),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF2A3942)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            match.peerUsername,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          kLanguageFlags[match.peerNativeLang] ?? '🌐',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: latencyColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${peerNode.latencyMs}ms',
+                          style: TextStyle(
+                            color: latencyColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
