@@ -60,18 +60,27 @@ class SignalingManager:
             "target_lang": target_lang,
         }
 
+        # Purge any previous stale room for this user
+        old_room = self.user_rooms.pop(user_id, None)
+        if old_room:
+            for p, r in list(self.user_rooms.items()):
+                if r == old_room:
+                    self.user_rooms.pop(p, None)
+
         my_native = (native_lang or "").strip().lower()
         my_target = (target_lang or "").strip().lower()
 
-        # Check for a match in the waiting queue:
-        # Tier 1: Perfect reciprocal match (User A native == User B target AND User A target == User B native)
-        # Tier 2: Compatible match (User A target == User B target, or one speaks what other is learning)
+        # Clean out dead connections from queue first
+        valid_queue = []
+        for wid in self.waiting_queue:
+            if wid in self.active_connections and wid != user_id:
+                valid_queue.append(wid)
+        self.waiting_queue = valid_queue
+
         matched_peer_id = None
         
-        # Pass 1: Reciprocal
+        # Pass 1: Reciprocal match
         for waiting_id in self.waiting_queue:
-            if str(waiting_id) == str(user_id):
-                continue
             peer_profile = self.user_profiles.get(waiting_id)
             if not peer_profile:
                 continue
@@ -83,11 +92,9 @@ class SignalingManager:
                 matched_peer_id = waiting_id
                 break
 
-        # Pass 2: Co-learning / Compatible if no reciprocal match yet
+        # Pass 2: Compatible / Co-learning match
         if not matched_peer_id:
             for waiting_id in self.waiting_queue:
-                if str(waiting_id) == str(user_id):
-                    continue
                 peer_profile = self.user_profiles.get(waiting_id)
                 if not peer_profile:
                     continue
@@ -95,7 +102,6 @@ class SignalingManager:
                 peer_native = (peer_profile.get("native_lang") or "").strip().lower()
                 peer_target = (peer_profile.get("target_lang") or "").strip().lower()
 
-                # Both practicing the same target language or complementary
                 if peer_target == my_target or peer_native == my_target or peer_target == my_native:
                     matched_peer_id = waiting_id
                     break

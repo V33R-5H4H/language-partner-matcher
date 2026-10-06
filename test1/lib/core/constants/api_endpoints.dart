@@ -5,10 +5,8 @@ class ApiEndpoints {
   static String get baseUrl {
     const custom = String.fromEnvironment('API_BASE_URL');
     if (custom.isNotEmpty) return custom;
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8000';
-    }
-    return 'http://localhost:8000';
+    // Default to active AWS Mumbai EC2 instance
+    return 'http://13.235.12.217:8000';
   }
 
   static String get wsUrl {
