@@ -80,8 +80,8 @@ class SignalingManager:
         if user_id not in self.waiting_queue:
             self.waiting_queue.append(user_id)
 
-        # Collect all active peers currently on radar
-        discovered_peers = []
+        # Collect all compatible active peers currently searching on radar
+        compatible_peers = []
         for waiting_id in self.waiting_queue:
             if str(waiting_id) == str(user_id):
                 continue
@@ -93,35 +93,35 @@ class SignalingManager:
             peer_target = (peer_profile.get("target_lang") or "").strip().lower()
 
             is_reciprocal = (peer_native == my_target and peer_target == my_native)
-            is_compatible = (peer_target == my_target or peer_native == my_target or peer_target == my_native)
+            # Compatible if reciprocal, native mentor, learner of user's language, or co-learner
+            is_compatible = (
+                is_reciprocal or
+                (peer_native == my_target and my_target != "") or
+                (peer_target == my_native and my_native != "") or
+                (peer_target == my_target and my_target != "")
+            )
 
-            discovered_peers.append({
-                "peer_id": waiting_id,
-                "peer_username": peer_profile.get("username", "Language Partner"),
-                "peer_native_lang": peer_profile.get("native_lang", "English"),
-                "peer_target_lang": peer_profile.get("target_lang", "Spanish"),
-                "is_reciprocal": is_reciprocal,
-                "is_compatible": is_compatible,
-                "room_id": f"room_{user_id}_{waiting_id}",
-            })
+            if is_compatible:
+                compatible_peers.append({
+                    "peer_id": waiting_id,
+                    "peer_username": peer_profile.get("username", "Language Partner"),
+                    "peer_native_lang": peer_profile.get("native_lang", target_lang),
+                    "peer_target_lang": peer_profile.get("target_lang", native_lang),
+                    "is_reciprocal": is_reciprocal,
+                    "is_compatible": is_compatible,
+                    "room_id": f"room_{user_id}_{waiting_id}",
+                })
 
-        if discovered_peers:
-            # Send the full pool of discovered peers to the searching user immediately
+        if compatible_peers:
+            # Send all compatible peers discovered to the searching user immediately
             await self.send_personal_message({
                 "type": "peers_discovered",
-                "peers": discovered_peers,
+                "peers": compatible_peers,
             }, user_id)
 
-            # Broadcast peer_joined_radar to all other active peers on the radar
-            for dp in discovered_peers:
-                pid = dp["peer_id"]
-                peer_profile = self.user_profiles.get(pid, {})
-                peer_native = (peer_profile.get("native_lang") or "").strip().lower()
-                peer_target = (peer_profile.get("target_lang") or "").strip().lower()
-
-                is_recip_for_peer = (my_native == peer_target and my_target == peer_native)
-                is_compat_for_peer = (my_target == peer_target or my_native == peer_target or my_target == peer_native)
-
+            # Broadcast peer_joined_radar to every active compatible peer on the radar
+            for cp in compatible_peers:
+                pid = cp["peer_id"]
                 await self.send_personal_message({
                     "type": "peer_joined_radar",
                     "peer": {
@@ -129,15 +129,15 @@ class SignalingManager:
                         "peer_username": username,
                         "peer_native_lang": native_lang,
                         "peer_target_lang": target_lang,
-                        "is_reciprocal": is_recip_for_peer,
-                        "is_compatible": is_compat_for_peer,
-                        "room_id": dp["room_id"],
+                        "is_reciprocal": cp["is_reciprocal"],
+                        "is_compatible": cp["is_compatible"],
+                        "room_id": cp["room_id"],
                     },
                 }, pid)
 
-            logger.info(f"User {user_id} discovered {len(discovered_peers)} partner(s) on radar.")
+            logger.info(f"User {user_id} discovered {len(compatible_peers)} compatible partner(s) on radar.")
         else:
-            logger.info(f"User {user_id} enqueued (Native: {native_lang}, Target: {target_lang}). Waiting for partners...")
+            logger.info(f"User {user_id} enqueued (Native: {native_lang}, Target: {target_lang}). Waiting for compatible partners...")
 
     async def cancel_search(self, user_id: str):
         if user_id in self.waiting_queue:
