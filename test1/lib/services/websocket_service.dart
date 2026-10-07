@@ -60,9 +60,12 @@ class WebSocketService {
       debugPrint('WebSocketService: Connected successfully as user $userId');
       _startHeartbeat();
 
-      // Flush any queued messages
+      // Flush queued messages — but NEVER re-send enqueue/find_match automatically.
+      // Those must be explicitly triggered by user action in the UI.
       if (_pendingSendQueue.isNotEmpty) {
-        final toSend = List<Map<String, dynamic>>.from(_pendingSendQueue);
+        final toSend = List<Map<String, dynamic>>.from(_pendingSendQueue)
+            .where((m) => m['type'] != 'enqueue' && m['type'] != 'find_match')
+            .toList();
         _pendingSendQueue.clear();
         for (final item in toSend) {
           send(item);

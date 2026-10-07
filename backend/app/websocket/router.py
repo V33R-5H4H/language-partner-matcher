@@ -36,15 +36,12 @@ async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str):
                 "media_state_changed", "call_mode_changed",
                 "peer_unavailable",
             ):
-                # Determine the target peer — prioritise peer_id over to
-                target_peer_id = (
-                    data.get("peer_id") or
-                    data.get("to") or
-                    data.get("caller_id") if event_type == "call_accepted" else None
-                )
-                # For incoming_call_request the backend should forward to the *recipient* peer
-                if event_type == "incoming_call_request":
-                    target_peer_id = data.get("peer_id")
+                # Resolve the target peer for forwarding
+                # For call_accepted, route back to the caller (caller_id)
+                if event_type == "call_accepted":
+                    target_peer_id = data.get("peer_id") or data.get("caller_id") or data.get("to")
+                else:
+                    target_peer_id = data.get("peer_id") or data.get("to")
 
                 if target_peer_id:
                     payload = dict(data)

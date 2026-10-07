@@ -26,6 +26,11 @@ class WebRTCService {
   bool _hasRemoteDescriptionSet = false;
   final List<RTCIceCandidate> _pendingIceCandidates = [];
 
+  // Offer buffering: if the offer arrives before the peer connection is ready,
+  // store it here and process it immediately after the peer connection is created.
+  String? _pendingOfferSdp;
+  String? _pendingOfferFrom;
+
   String _targetPeerId = '';
   String _currentRoomId = '';
   String? _lastOfferSdp;
@@ -184,6 +189,8 @@ class WebRTCService {
     _hasRemoteDescriptionSet = false;
     _pendingIceCandidates.clear();
     _lastOfferSdp = null;
+    _pendingOfferSdp = null;
+    _pendingOfferFrom = null;
 
     // Reset connection status text
     connectionStatusTextNotifier.value = 'Connecting...';
@@ -210,6 +217,16 @@ class WebRTCService {
         for (final track in _localStream!.getTracks()) {
           await _peerConnection?.addTrack(track, _localStream!);
         }
+      }
+
+      // Process any offer that arrived before the peer connection was ready
+      if (_pendingOfferSdp != null && !_isInitiator) {
+        final bufferedSdp = _pendingOfferSdp!;
+        final bufferedFrom = _pendingOfferFrom;
+        _pendingOfferSdp = null;
+        _pendingOfferFrom = null;
+        debugPrint('WebRTCService: Processing buffered offer from $bufferedFrom');
+        await _processIncomingOffer(bufferedSdp, bufferedFrom);
       }
 
       // Handle Remote Tracks (Unified-Plan)
@@ -420,28 +437,13 @@ class WebRTCService {
       } else if (type == 'offer') {
         final sdp = data['sdp'];
         if (_peerConnection == null) {
-          debugPrint('WebRTCService: Received offer before PeerConnection ready. Waiting...');
-          await Future.delayed(const Duration(milliseconds: 300));
+          // Buffer the offer — will be processed as soon as the peer connection is ready
+          debugPrint('WebRTCService: Offer arrived before PeerConnection ready — buffering.');
+          _pendingOfferSdp = sdp;
+          _pendingOfferFrom = from?.toString();
+          return;
         }
-        await _peerConnection?.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
-        _hasRemoteDescriptionSet = true;
-        await _flushPendingIceCandidates();
-
-        final answer = await _peerConnection!.createAnswer({
-          'offerToReceiveVideo': 1,
-          'offerToReceiveAudio': 1,
-        });
-        final optimizedAnswerSdp = _optimizeSdpAudio(answer.sdp);
-        final optimizedAnswer = RTCSessionDescription(optimizedAnswerSdp, answer.type);
-        await _peerConnection!.setLocalDescription(optimizedAnswer);
-
-        WebSocketService.instance.send({
-          'type': 'answer',
-          'peer_id': from,
-          'room_id': _currentRoomId,
-          'sdp': optimizedAnswerSdp,
-        });
-        debugPrint('WebRTCService: Sent optimized SDP Answer to peer $from');
+        await _processIncomingOffer(sdp, from?.toString());
       } else if (type == 'answer') {
         final sdp = data['sdp'];
         await _peerConnection?.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
@@ -500,6 +502,39 @@ class WebRTCService {
     }
     _pendingIceCandidates.clear();
   }
+
+  /// Process an incoming SDP offer — creates answer and sends it back.
+  /// Called both immediately (if PC ready) and from deferred buffered path.
+  Future<void> _processIncomingOffer(String sdp, String? from) async {
+    if (_peerConnection == null) {
+      debugPrint('WebRTCService: _processIncomingOffer called but PC is still null — dropping.');
+      return;
+    }
+    try {
+      await _peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+      _hasRemoteDescriptionSet = true;
+      await _flushPendingIceCandidates();
+
+      final answer = await _peerConnection!.createAnswer({
+        'offerToReceiveVideo': 1,
+        'offerToReceiveAudio': 1,
+      });
+      final optimizedAnswerSdp = _optimizeSdpAudio(answer.sdp);
+      final optimizedAnswer = RTCSessionDescription(optimizedAnswerSdp, answer.type);
+      await _peerConnection!.setLocalDescription(optimizedAnswer);
+
+      WebSocketService.instance.send({
+        'type': 'answer',
+        'peer_id': from ?? _targetPeerId,
+        'room_id': _currentRoomId,
+        'sdp': optimizedAnswerSdp,
+      });
+      debugPrint('WebRTCService: Sent SDP Answer to peer ${from ?? _targetPeerId}');
+    } catch (e) {
+      debugPrint('WebRTCService: Error processing incoming offer: $e');
+    }
+  }
+
 
   /// Send in-call chat message via WebRTC DataChannel with guaranteed WebSocket delivery
   void sendChatMessage(String text) {
@@ -703,6 +738,8 @@ class WebRTCService {
       chatHistory.clear();
       _hasRemoteDescriptionSet = false;
       _lastOfferSdp = null;
+      _pendingOfferSdp = null;
+      _pendingOfferFrom = null;
 
       _targetPeerId = '';
       _currentRoomId = '';

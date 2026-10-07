@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/local/database_helper.dart';
@@ -140,12 +141,17 @@ class _VideoCallScreenState extends State<VideoCallScreen>
       });
     }
 
-    // Connection timeout fallback: if remote stream not received in 25s, exit cleanly
-    Timer(const Duration(seconds: 25), () {
-      if (mounted && WebRTCService.instance.remoteStreamNotifier.value == null) {
+    // Connection timeout: if remote stream still not received after 45s, exit cleanly
+    Future.delayed(const Duration(seconds: 45), () {
+      if (!mounted) return;
+      final iceState = WebRTCService.instance.iceConnectionStateNotifier.value;
+      final alreadyConnected =
+          iceState == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          iceState == RTCIceConnectionState.RTCIceConnectionStateCompleted;
+      if (WebRTCService.instance.remoteStreamNotifier.value == null && !alreadyConnected) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Partner did not connect. Returning to discovery...'),
+            content: Text('Could not reach partner. Returning to discovery...'),
             backgroundColor: AppColors.danger,
             duration: Duration(seconds: 3),
           ),
@@ -447,7 +453,8 @@ class _VideoCallScreenState extends State<VideoCallScreen>
     _wsSubscription?.cancel();
     _inCallMessageSub?.cancel();
     _recentMessageTimer?.cancel();
-    WebRTCService.instance.dispose();
+    // NOTE: WebRTCService.instance.dispose() is called inside _endCall().
+    // Do NOT call it again here to avoid double-dispose crashes.
     super.dispose();
   }
 
