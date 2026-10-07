@@ -8,6 +8,9 @@
 .env.local
 *.pem
 *.key
+*.jks
+*.keystore
+**/android/key.properties
 
 # Python & FastAPI
 __pycache__/
@@ -19,7 +22,8 @@ ENV/
 *.sqlite3
 *.db
 
-# Docker volumes
+# Docker
+docker-compose.override.yml
 postgres_data/
 redis_data/
 postgres_prod_data/
@@ -41,6 +45,10 @@ build/
 **/android/**/GeneratedPluginRegistrant.java
 **/android/**/*.apk
 **/android/**/*.aab
+
+# APK files at root (don't commit release APKs to git)
+*.apk
+*.aab
 
 # Windows desktop
 **/windows/flutter/ephemeral/
