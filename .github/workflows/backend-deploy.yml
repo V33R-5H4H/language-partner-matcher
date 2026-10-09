@@ -1,6 +1,7 @@
 name: Backend CI/CD
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -50,13 +51,13 @@ jobs:
         run: pytest tests/ -v --tb=short || echo "No tests found - skipping"
 
   # ─────────────────────────────────────────────────────────────
-  # JOB 2: Build & Push Docker Image to ECR (main only)
+  # JOB 2: Build & Push Docker Image to ECR (main or manual dispatch)
   # ─────────────────────────────────────────────────────────────
   build-and-push:
     name: Build & Push to ECR
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
     outputs:
       image: ${{ steps.build-image.outputs.image }}
     steps:
@@ -83,13 +84,13 @@ jobs:
           echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
   # ─────────────────────────────────────────────────────────────
-  # JOB 3: SSH Deploy to EC2 (main only, requires approval)
+  # JOB 3: SSH Deploy to EC2 (main or manual dispatch)
   # ─────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to EC2
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
     environment: production
     steps:
       - uses: actions/checkout@v4
