@@ -11,7 +11,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)](https://www.docker.com)
 [![Web App](https://img.shields.io/badge/Live_Web_App-Browser_Access-brightgreen?logo=googlechrome)](http://13.235.12.217:8000/web/)
 
-> 🚀 **Live Web Application**: **[Launch in Browser (Live AWS Server)](http://13.235.12.217:8000/web/)**  
+> 🚀 **Live Web Application**: **[Launch in Browser (Live AWS Server)](http://alb-langmatcher-1660747697.ap-south-1.elb.amazonaws.com/web/)**  
 > *(Runs directly in your browser — connected to the live AWS EC2 signaling backend)*
 
 ---
