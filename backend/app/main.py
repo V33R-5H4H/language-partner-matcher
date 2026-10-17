@@ -70,7 +70,7 @@ for wp in web_paths:
 async def redirect_to_web():
     return RedirectResponse(url="/web/")
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {
         "message": "Welcome to Language Partner Matcher API",
