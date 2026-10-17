@@ -63,22 +63,6 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # Configure keystore if secrets exist
-      - name: Configure keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
-          KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
-          KEYSTORE_KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Decoding release keystore..."
-            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
-            printf "storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=upload-keystore.jks\n" \
-              "$KEYSTORE_STORE_PASSWORD" "$KEYSTORE_KEY_PASSWORD" "$KEYSTORE_KEY_ALIAS" > android/key.properties
-          else
-            echo "No KEYSTORE_BASE64 secret provided - proceeding with default release build"
-          fi
 
       # Build single main release APK
       - name: Build main release APK
@@ -195,6 +179,14 @@ jobs:
             echo "release_name=Latest Continuous Build (main)" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Purge old split APK assets from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete-asset latest app-arm64-v8a-release.apk --yes 2>/dev/null || true
+          gh release delete-asset latest app-armeabi-v7a-release.apk --yes 2>/dev/null || true
+          gh release delete-asset latest app-x86_64-release.apk --yes 2>/dev/null || true
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
