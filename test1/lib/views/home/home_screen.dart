@@ -404,7 +404,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 // Main Page Content spanning remaining viewport width
                 Expanded(
-                  child: _pages[_currentIndex],
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: _pages,
+                  ),
                 ),
               ],
             ),
@@ -414,7 +417,10 @@ class _HomeScreenState extends State<HomeScreen> {
         // Standard Mobile/Narrow Layout: Bottom Navigation Bar
         return Scaffold(
           backgroundColor: AppColors.backgroundDark,
-          body: _pages[_currentIndex],
+          body: IndexedStack(
+            index: _currentIndex,
+            children: _pages,
+          ),
           bottomNavigationBar: Container(
             decoration: const BoxDecoration(
               color: AppColors.surfaceDark,

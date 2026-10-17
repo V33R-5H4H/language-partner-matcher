@@ -2,11 +2,18 @@ class ApiEndpoints {
   static String _sanitizeUrl(String url) {
     var trimmed = url.trim();
     if (trimmed.isEmpty) return '';
-    if (trimmed.startsWith('http:') && !trimmed.startsWith('http://')) {
+    if (trimmed.startsWith('ws:') && !trimmed.startsWith('ws://')) {
+      trimmed = trimmed.replaceFirst('ws:', 'ws://');
+    } else if (trimmed.startsWith('wss:') && !trimmed.startsWith('wss://')) {
+      trimmed = trimmed.replaceFirst('wss:', 'wss://');
+    } else if (trimmed.startsWith('http:') && !trimmed.startsWith('http://')) {
       trimmed = trimmed.replaceFirst('http:', 'http://');
     } else if (trimmed.startsWith('https:') && !trimmed.startsWith('https://')) {
       trimmed = trimmed.replaceFirst('https:', 'https://');
-    } else if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    } else if (!trimmed.startsWith('http://') &&
+        !trimmed.startsWith('https://') &&
+        !trimmed.startsWith('ws://') &&
+        !trimmed.startsWith('wss://')) {
       trimmed = 'http://$trimmed';
     }
     if (trimmed.endsWith('/')) {
@@ -41,8 +48,7 @@ class ApiEndpoints {
       var sanitized = _sanitizeUrl(customWs);
       if (sanitized.startsWith('http://')) {
         sanitized = sanitized.replaceFirst('http://', 'ws://');
-      }
-      if (sanitized.startsWith('https://')) {
+      } else if (sanitized.startsWith('https://')) {
         sanitized = sanitized.replaceFirst('https://', 'wss://');
       }
       return sanitized;
