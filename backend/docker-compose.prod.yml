@@ -9,12 +9,10 @@ services:
     ports:
       - "8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # All secrets are loaded from .env (written by bootstrap.sh from AWS Secrets Manager)
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres_db:5432/${POSTGRES_DB:-langmatcher}
-      - REDIS_URL=redis://redis_cache:6379/0
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-production_secret_key_change_me_987654321}
-      - TURN_DOMAIN=${TURN_DOMAIN:-turn.langmatcher.com}
-      - TURN_SHARED_SECRET=${TURN_SHARED_SECRET:-coturn_production_shared_secret_789xyz}
       - ENVIRONMENT=production
     depends_on:
       postgres_db:
@@ -23,23 +21,27 @@ services:
         condition: service_healthy
 
   # 2. Managed PostgreSQL Database
+  # Note: In the decoupled production architecture, replace this service
+  # with your AWS RDS endpoint in DATABASE_URL inside .env
   postgres_db:
     image: postgres:15-alpine
     container_name: langmatcher_postgres_prod
     restart: always
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-langmatcher}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-langmatcher}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   # 3. Redis In-Memory Cache & Pub/Sub Matchmaking
+  # Note: In the decoupled production architecture, replace this service
+  # with your dedicated Redis EC2 private IP in REDIS_URL inside .env
   redis_cache:
     image: redis:7-alpine
     container_name: langmatcher_redis_prod
@@ -52,16 +54,18 @@ services:
       timeout: 5s
       retries: 5
 
-  # 4. Coturn STUN/TURN Media Relay Server (For Symmetric NAT / Firewall Traversal)
+  # 4. Coturn STUN/TURN Media Relay Server
+  # Note: In the decoupled production architecture, this service is replaced
+  # by the standalone CoTURN EC2. Set TURN_DOMAIN and TURN_SHARED_SECRET in .env
   coturn_turn:
     build:
       context: ./coturn
       dockerfile: Dockerfile
     container_name: langmatcher_coturn_prod
     restart: always
-    network_mode: "host" # High-throughput host networking for WebRTC media relay
+    network_mode: "host"
     environment:
-      - TURN_SHARED_SECRET=${TURN_SHARED_SECRET:-coturn_production_shared_secret_789xyz}
+      - TURN_SHARED_SECRET=${TURN_SHARED_SECRET}
 
 volumes:
   postgres_prod_data:

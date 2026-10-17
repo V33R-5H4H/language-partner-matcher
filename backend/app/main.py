@@ -1,7 +1,9 @@
+import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.api.health import router as health_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.users import router as users_router
@@ -51,10 +53,22 @@ app.include_router(match_router, prefix="/api/v1/match", tags=["Matchmaking"])
 app.include_router(webrtc_router, prefix="/api/v1", tags=["WebRTC"])
 app.include_router(ws_router)
 
+# Mount Flutter Web if compiled directory exists
+web_paths = [
+    os.path.join(os.path.dirname(__file__), "..", "web_build"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "test1", "build", "web"),
+]
+for wp in web_paths:
+    if os.path.isdir(wp):
+        app.mount("/web", StaticFiles(directory=wp, html=True), name="web")
+        logger.info(f"Mounted Flutter Web interface at /web from {wp}")
+        break
+
 @app.get("/")
 async def root():
     return {
         "message": "Welcome to Language Partner Matcher API",
         "docs": "/docs",
         "health": "/api/v1/health",
+        "web": "/web",
     }

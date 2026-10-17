@@ -1,7 +1,7 @@
 class ApiEndpoints {
   static String _sanitizeUrl(String url) {
     var trimmed = url.trim();
-    if (trimmed.isEmpty) return 'http://13.235.12.217:8000';
+    if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('http:') && !trimmed.startsWith('http://')) {
       trimmed = trimmed.replaceFirst('http:', 'http://');
     } else if (trimmed.startsWith('https:') && !trimmed.startsWith('https://')) {
@@ -15,20 +15,35 @@ class ApiEndpoints {
     return trimmed;
   }
 
-  // Configurable base URLs with platform-aware smart defaults
+  /// Base HTTP URL for the backend API.
+  ///
+  /// Set at build time via:
+  ///   --dart-define=API_BASE_URL=http://<your-server>:8000
+  ///
+  /// For local development (emulator): http://10.0.2.2:8000
+  /// For local development (web/chrome): http://localhost:8000
+  /// For production (AWS EC2): http://<EC2_PUBLIC_IP>:8000
   static String get baseUrl {
     const custom = String.fromEnvironment('API_BASE_URL');
     if (custom.isNotEmpty) return _sanitizeUrl(custom);
-    // Default to active AWS Mumbai EC2 instance
-    return 'http://13.235.12.217:8000';
+    return 'http://localhost:8000';
   }
 
+  /// Base WebSocket URL for signaling (derived from API_BASE_URL or overridden).
+  ///
+  /// Set at build time via:
+  ///   --dart-define=WS_BASE_URL=ws://<your-server>:8000
+  /// (If not set, derived automatically from API_BASE_URL)
   static String get wsUrl {
     const customWs = String.fromEnvironment('WS_BASE_URL');
     if (customWs.isNotEmpty) {
       var sanitized = _sanitizeUrl(customWs);
-      if (sanitized.startsWith('http://')) sanitized = sanitized.replaceFirst('http://', 'ws://');
-      if (sanitized.startsWith('https://')) sanitized = sanitized.replaceFirst('https://', 'wss://');
+      if (sanitized.startsWith('http://')) {
+        sanitized = sanitized.replaceFirst('http://', 'ws://');
+      }
+      if (sanitized.startsWith('https://')) {
+        sanitized = sanitized.replaceFirst('https://', 'wss://');
+      }
       return sanitized;
     }
     final base = baseUrl;

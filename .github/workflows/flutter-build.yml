@@ -4,17 +4,17 @@ name: Flutter APK & Web CI/CD
 # To re-enable automatic CI/CD, uncomment the push and pull_request sections below.
 on:
   workflow_dispatch: {}
-  # push:
-  #   branches: [main]
-  #   tags:
-  #     - 'v*'
-  #   paths:
-  #     - 'test1/**'
-  #     - '.github/workflows/flutter-build.yml'
-  # pull_request:
-  #   branches: [main]
-  #   paths:
-  #     - 'test1/**'
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+    paths:
+      - 'test1/**'
+      - '.github/workflows/flutter-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'test1/**'
 
 jobs:
   # ─────────────────────────────────────────────────────────────
@@ -83,21 +83,22 @@ jobs:
           fi
 
       # 1. Build Split-per-ABI APKs (smaller downloads for phones)
+      # Requires GitHub Secrets: API_BASE_URL, WS_BASE_URL
       - name: Build split-per-abi APKs
         run: |
           flutter build apk \
             --release \
             --split-per-abi \
-            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }} \
-            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL || 'ws://13.235.12.217:8000' }}
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
+            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL }}
 
       # 2. Build Universal APK (works on all architectures)
       - name: Build universal APK
         run: |
           flutter build apk \
             --release \
-            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }} \
-            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL || 'ws://13.235.12.217:8000' }}
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
+            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL }}
 
       - name: List APK outputs
         run: ls -la build/app/outputs/flutter-apk/
@@ -111,11 +112,74 @@ jobs:
           retention-days: 30
 
   # ─────────────────────────────────────────────────────────────
-  # JOB 3: Route APKs directly to GitHub Releases (Tags & Rolling Main)
+  # JOB 3: Build Flutter Web (Access Remotely in Browser)
+  # ─────────────────────────────────────────────────────────────
+  build-web:
+    name: Build Flutter Web for Browser
+    needs: analyze
+    runs-on: ubuntu-latest
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: test1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      # Requires GitHub Secrets: API_BASE_URL, WS_BASE_URL
+      - name: Compile Flutter Web
+        run: |
+          flutter build web --release \
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
+            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL }}
+
+      - name: Package Web Build as Zip
+        run: |
+          cd build/web
+          zip -r ../../flutter-web-build.zip .
+
+      - name: Upload Web Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web-build-${{ github.sha }}
+          path: test1/build/web/
+          retention-days: 30
+
+      - name: Upload Web Zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web-zip-${{ github.sha }}
+          path: test1/flutter-web-build.zip
+          retention-days: 30
+
+      - name: Display Web Interface Link in GitHub Summary
+        run: |
+          WEB_URL="${{ secrets.WEB_APP_URL || (secrets.API_BASE_URL && format('{0}/web', secrets.API_BASE_URL)) || 'http://13.235.12.217:8000/web' }}"
+          echo "## 🌐 Flutter Web Interface Available" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The web build for Language Partner Matcher has been successfully compiled!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Direct Web Application Link**: [$WEB_URL]($WEB_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend API**: \`${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Signaling Endpoint**: \`${{ secrets.WS_BASE_URL || 'ws://13.235.12.217:8000' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "You can also download \`flutter-web-build.zip\` from the workflow artifacts or GitHub Releases to deploy onto any static host (S3/CloudFront/Nginx)." >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 4: Route APKs & Web to GitHub Releases
   # ─────────────────────────────────────────────────────────────
   release:
     name: Publish to GitHub Releases
-    needs: build-apk
+    needs: [build-apk, build-web]
     runs-on: ubuntu-latest
     if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
@@ -127,7 +191,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-apks-${{ github.sha }}
-          path: apk-files/
+          path: release-assets/
+
+      - name: Download Web Zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-web-zip-${{ github.sha }}
+          path: release-assets/
 
       - name: Determine Release Tag and Title
         id: release_meta
@@ -148,52 +218,21 @@ jobs:
           tag_name: ${{ steps.release_meta.outputs.tag_name }}
           name: ${{ steps.release_meta.outputs.release_name }}
           prerelease: ${{ steps.release_meta.outputs.is_prerelease == 'true' }}
-          files: apk-files/app-release.apk
+          files: release-assets/*
           generate_release_notes: true
           body: |
-            ### 📱 Language Partner Matcher — Mobile App Build
+            ### 🌐 Language Partner Matcher — Build Assets
+
+            #### 💻 Instant Web Interface Access
+            - **Live Web App**: [${{ secrets.WEB_APP_URL || (secrets.API_BASE_URL && format('{0}/web', secrets.API_BASE_URL)) || 'http://13.235.12.217:8000/web' }}](${{ secrets.WEB_APP_URL || (secrets.API_BASE_URL && format('{0}/web', secrets.API_BASE_URL)) || 'http://13.235.12.217:8000/web' }})
+            - **Backend Endpoint**: `${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }}`
             - **Commit**: `${{ github.sha }}`
             - **Branch/Tag**: `${{ github.ref_name }}`
-            - **Backend Endpoint**: `${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }}`
 
-            #### 📥 Download APK:
-            - **`app-release.apk`**: Universal Android APK (Works on any Android device)
+            #### 📥 Download Client Binaries:
+            - **`app-release.apk`**: Universal APK (Works on any Android phone)
+            - **`app-arm64-v8a-release.apk`**: Optimized for modern 64-bit phones (smaller size)
+            - **`flutter-web-build.zip`**: Standalone production web build for hosting on S3 / Nginx / CloudFront
 
             ---
-            *Built automatically by GitHub Actions CI/CD.*
-
-  # ─────────────────────────────────────────────────────────────
-  # JOB 4: Build Flutter Web (Access Remotely in Browser)
-  # ─────────────────────────────────────────────────────────────
-  build-web:
-    name: Build Flutter Web for Browser
-    needs: analyze
-    runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
-    defaults:
-      run:
-        working-directory: test1
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.x'
-          channel: stable
-          cache: true
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Compile Flutter Web
-        run: |
-          flutter build web --release \
-            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }} \
-            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL || 'ws://13.235.12.217:8000' }}
-
-      - name: Upload Web Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: flutter-web-build-${{ github.sha }}
-          path: test1/build/web/
-          retention-days: 30
+            *Built and published automatically by GitHub Actions CI/CD.*
