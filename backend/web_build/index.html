@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Language Partner Matcher - Web App</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      text-align: center;
+      padding: 20px;
+    }
+    .card {
+      background: #1e293b;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      max-width: 600px;
+      border: 1px solid #334155;
+    }
+    h1 { color: #38bdf8; margin-top: 0; }
+    p { color: #94a3b8; line-height: 1.6; }
+    code { background: #0f172a; padding: 4px 8px; border-radius: 6px; color: #f472b6; }
+    .btn {
+      display: inline-block;
+      margin-top: 20px;
+      background: #38bdf8;
+      color: #0f172a;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Language Partner Matcher</h1>
+    <p>The Flutter Web application is ready to be loaded!</p>
+    <p>To serve the full Flutter compiled client here, compile and upload the bundle:</p>
+    <p><code>flutter build web --release --dart-define=API_BASE_URL=http://13.235.12.217:8000</code></p>
+    <a href="/docs" class="btn">View Swagger API Docs</a>
+  </div>
+</body>
+</html>

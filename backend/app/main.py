@@ -53,7 +53,9 @@ app.include_router(match_router, prefix="/api/v1/match", tags=["Matchmaking"])
 app.include_router(webrtc_router, prefix="/api/v1", tags=["WebRTC"])
 app.include_router(ws_router)
 
-# Mount Flutter Web if compiled directory exists
+from fastapi.responses import RedirectResponse
+
+# Mount Flutter Web directory
 web_paths = [
     os.path.join(os.path.dirname(__file__), "..", "web_build"),
     os.path.join(os.path.dirname(__file__), "..", "..", "test1", "build", "web"),
@@ -64,11 +66,15 @@ for wp in web_paths:
         logger.info(f"Mounted Flutter Web interface at /web from {wp}")
         break
 
+@app.get("/web", include_in_schema=False)
+async def redirect_to_web():
+    return RedirectResponse(url="/web/")
+
 @app.get("/")
 async def root():
     return {
         "message": "Welcome to Language Partner Matcher API",
         "docs": "/docs",
         "health": "/api/v1/health",
-        "web": "/web",
+        "web": "/web/",
     }
