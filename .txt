@@ -1,0 +1,133 @@
+
+Here is the complete, step-by-step guide for **Option B (Dedicated Self-Hosted Redis Instance)**. 
+
+This gives you a completely separate Redis service, costs **$0 on the AWS Free Tier**, and avoids ElastiCache's ~$14/month fee.
+
+---
+
+### Step 1: Create the Redis Security Group (`langmatcher-redis-sg`)
+
+1. Go to **AWS Console $\to$ EC2 $\to$ Security Groups $\to$ Create security group**.
+2. **Basic details**:
+   - **Security group name**: `langmatcher-redis-sg`
+   - **Description**: `Allow Redis 6379 from App Server and SSH from My IP`
+   - **VPC**: Default VPC
+3. **Inbound rules**:
+   - **Rule 1 (Redis)**:
+     - Type: `Custom TCP`
+     - Port range: `6379`
+     - Source: Select `Custom` $\to$ type `sg-098c28bb4bc20f756` (your `langmatcher-app-sg`).
+     - Description: `Allow App Server to access Redis`
+   - **Rule 2 (SSH)**:
+     - Type: `SSH` (Port `22`)
+     - Source: `My IP`
+     - Description: `Terminal administration`
+4. Click **Create security group**.
+
+---
+
+### Step 2: Launch the Redis EC2 Instance
+
+1. Go to **EC2 $\to$ Instances $\to$ Launch instances**.
+2. **Name**: `langmatcher-redis`
+3. **Application and OS Images**: Choose **Ubuntu** $\to$ **Ubuntu Server 22.04 LTS** (Free tier eligible).
+4. **Instance type**: `t3.micro` (Free tier eligible).
+5. **Key pair**: Select your existing `.pem` key pair.
+6. **Network settings** $\to$ Click **Edit**:
+   - **Auto-assign public IP**: **Enable** (needed so you can SSH into it to set it up).
+   - **Firewall (security groups)**: Choose **Select existing security group** $\to$ select **`langmatcher-redis-sg`** (remove `default`).
+7. **Storage**: Leave default (8 GiB gp3).
+8. Click **Launch instance**.
+
+---
+
+### Step 3: Install Redis on the New Instance
+
+1. Once the instance state is **Running**, click on `langmatcher-redis` and copy its **Public IPv4 address** (e.g. `13.235.x.x`).
+2. Open PowerShell on your computer and SSH into it:
+   ```powershell
+   ssh -i your-key.pem ubuntu@<PUBLIC_IP_OF_REDIS_INSTANCE>
+   ```
+3. Update packages and install Redis:
+   ```bash
+   sudo apt update && sudo apt install -y redis-server
+   ```
+4. Verify Redis is running:
+   ```bash
+   sudo systemctl status redis-server
+   ```
+   *(Press `q` to exit the status view)*.
+
+---
+
+### Step 4: Configure Redis for Private VPC Access
+
+By default, Redis only listens to `localhost`. We need it to listen to connections from your App Server.
+
+1. Open the configuration file:
+   ```bash
+   sudo nano /etc/redis/redis.conf
+   ```
+2. **Allow Network Connections**:
+   - Press `Ctrl + W`, type `bind 127.0.0.1`, and press Enter.
+   - Change:
+     ```text
+     bind 127.0.0.1 ::1
+     ```
+     to:
+     ```text
+     bind 0.0.0.0
+     ```
+3. **Set a Strong Password** (Recommended):
+   - Press `Ctrl + W`, type `# requirepass foobared`, and press Enter.
+   - Uncomment the line (remove `#`) and set your password:
+     ```text
+     requirepass LangMatcherRedisPass2026!
+     ```
+   *(Save your password in `secrets.txt`)*.
+4. Save and exit:
+   - Press `Ctrl + O`, then `Enter` (to save).
+   - Press `Ctrl + X` (to exit).
+5. Restart Redis to apply the changes:
+   ```bash
+   sudo systemctl restart redis-server
+   sudo systemctl enable redis-server
+   ```
+
+---
+
+### Step 5: Get the Private IP of Redis
+
+Because both EC2 instances are in the same VPC, they should communicate over their **Private IP** (this is free and much faster than public traffic).
+
+1. In AWS Console $\to$ **EC2 $\to$ Instances** $\to$ select `langmatcher-redis`.
+2. Look at the details tab below and copy the **Private IPv4 address**:
+   - Example: `172.31.25.140`.
+
+---
+
+### Step 6: Test Connection from Your App Server
+
+SSH into your **App Server** (`13.235.12.217`):
+
+```bash
+nc -zv <PRIVATE_IP_OF_REDIS> 6379
+```
+
+**Expected output:**
+```text
+Connection to 172.31.25.140 6379 port [tcp/redis] succeeded!
+```
+
+---
+
+### Step 7: How to Put It in Your Backend `.env`
+
+In your App Server's `/home/ubuntu/app/backend/.env`:
+
+```ini
+# Redis configuration pointing to your separate instance
+REDIS_URL="redis://:LangMatcherRedisPass2026!@<PRIVATE_IP_OF_REDIS>:6379/0"
+```
+
+*(If you didn't set a password in Step 4, it is simply `redis://<PRIVATE_IP_OF_REDIS>:6379/0`)*.

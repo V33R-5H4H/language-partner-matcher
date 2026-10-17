@@ -15,6 +15,8 @@ class WebSocketService {
   Timer? _reconnectTimer;
   final List<Map<String, dynamic>> _pendingSendQueue = [];
 
+  bool _isConnecting = false;
+
   bool get isConnected => _isConnected;
   String get currentUserId => _currentUserId;
 
@@ -27,6 +29,8 @@ class WebSocketService {
     _reconnectTimer?.cancel();
 
     if (_isConnected && _channel != null) return;
+    if (_isConnecting) return;
+    _isConnecting = true;
 
     try {
       await _closeChannel();
@@ -60,12 +64,9 @@ class WebSocketService {
       debugPrint('WebSocketService: Connected successfully as user $userId');
       _startHeartbeat();
 
-      // Flush queued messages — but NEVER re-send enqueue/find_match automatically.
-      // Those must be explicitly triggered by user action in the UI.
+      // Flush all pending queued messages upon successful connection
       if (_pendingSendQueue.isNotEmpty) {
-        final toSend = List<Map<String, dynamic>>.from(_pendingSendQueue)
-            .where((m) => m['type'] != 'enqueue' && m['type'] != 'find_match')
-            .toList();
+        final toSend = List<Map<String, dynamic>>.from(_pendingSendQueue);
         _pendingSendQueue.clear();
         for (final item in toSend) {
           send(item);
@@ -74,6 +75,8 @@ class WebSocketService {
     } catch (e) {
       debugPrint('WebSocketService: Connection error ($e). Retrying in 3s...');
       _handleDisconnect();
+    } finally {
+      _isConnecting = false;
     }
   }
 
@@ -99,7 +102,7 @@ class WebSocketService {
     _reconnectTimer?.cancel();
     if (_currentWsUrl.isNotEmpty && _currentUserId.isNotEmpty) {
       _reconnectTimer = Timer(const Duration(seconds: 3), () {
-        if (!_isConnected) {
+        if (!_isConnected && !_isConnecting) {
           connect(_currentWsUrl, userId: _currentUserId);
         }
       });
@@ -119,7 +122,7 @@ class WebSocketService {
     } else {
       debugPrint('WebSocketService: Not connected yet. Queuing event: ${data['type']}');
       _pendingSendQueue.add(data);
-      if (_currentWsUrl.isNotEmpty && _currentUserId.isNotEmpty) {
+      if (_currentWsUrl.isNotEmpty && _currentUserId.isNotEmpty && !_isConnecting) {
         connect(_currentWsUrl, userId: _currentUserId);
       }
     }
@@ -127,6 +130,7 @@ class WebSocketService {
 
   Future<void> _closeChannel() async {
     _isConnected = false;
+    _isConnecting = false;
     await _subscription?.cancel();
     _subscription = null;
     await _channel?.sink.close();
