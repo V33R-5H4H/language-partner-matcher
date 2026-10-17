@@ -12,3 +12,6 @@ services:
       - .env
     environment:
       - ENVIRONMENT=production
+    volumes:
+      - ./app:/app/app
+      - ./web_build:/app/web_build

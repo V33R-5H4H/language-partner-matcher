@@ -9,10 +9,10 @@
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io)
 [![WebRTC](https://img.shields.io/badge/WebRTC-Peer--to--Peer-333333?logo=webrtc)](https://webrtc.org)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)](https://www.docker.com)
-[![Web App](https://img.shields.io/badge/Live_Web_App-Browser_Access-brightgreen?logo=googlechrome)](http://13.235.12.217:8000/web)
+[![Web App](https://img.shields.io/badge/Live_Web_App-GitHub_Pages-brightgreen?logo=github)](https://v33r-5h4h.github.io/language-partner-matcher/)
 
-> 🚀 **Live Web Interface**: **[Open Web Application in Browser](http://13.235.12.217:8000/web)**  
-> *(Live deployment on AWS EC2 at `http://13.235.12.217:8000/web`)*
+> 🚀 **Live Web Application**: **[Launch in Browser (GitHub Pages)](https://v33r-5h4h.github.io/language-partner-matcher/)**  
+> *(No installation needed — runs directly in your browser)*
 
 ---
 
@@ -177,6 +177,8 @@ All secrets and sensitive infrastructure values must be placed in `backend/.env`
 | `TURN_SERVER_IP` | Elastic IP of standalone CoTURN EC2 | `13.xxx.xxx.xxx` |
 | `TURN_SHARED_SECRET`| Shared HMAC-SHA1 secret between backend and CoTURN | *Generate via `openssl rand -hex 32`* |
 | `WEB_APP_URL` | *(Optional CI Secret)* Direct URL to the live web interface | `http://13.235.12.217:8000/web` |
+| `EC2_HOST` | *(CI Secret for Auto-Deploy)* Public IP of your EC2 server | `13.235.12.217` |
+| `EC2_SSH_PRIVATE_KEY` | *(CI Secret for Auto-Deploy)* Contents of your `.pem` key file | `-----BEGIN RSA PRIVATE KEY-----...` |
 
 ---
 

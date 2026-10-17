@@ -134,17 +134,26 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
       # Requires GitHub Secrets: API_BASE_URL, WS_BASE_URL
       - name: Compile Flutter Web
         run: |
           flutter build web --release \
-            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }} \
-            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL }}
+            --base-href "/language-partner-matcher/" \
+            --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }} \
+            --dart-define=WS_BASE_URL=${{ secrets.WS_BASE_URL || 'ws://13.235.12.217:8000' }}
 
       - name: Package Web Build as Zip
         run: |
           cd build/web
           zip -r ../../flutter-web-build.zip .
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: test1/build/web
 
       - name: Upload Web Build Artifact
         uses: actions/upload-artifact@v4
@@ -162,20 +171,36 @@ jobs:
 
       - name: Display Web Interface Link in GitHub Summary
         run: |
-          WEB_URL="${{ secrets.WEB_APP_URL || (secrets.API_BASE_URL && format('{0}/web', secrets.API_BASE_URL)) || 'http://13.235.12.217:8000/web' }}"
-          echo "## 🌐 Flutter Web Interface Available" >> $GITHUB_STEP_SUMMARY
+          echo "## 🌐 Flutter Web on GitHub Pages" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The web build for Language Partner Matcher has been successfully compiled!" >> $GITHUB_STEP_SUMMARY
+          echo "The web application is automatically deployed to **GitHub Pages**!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🔗 **Direct Web Application Link**: [$WEB_URL]($WEB_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Live Web App**: [https://v33r-5h4h.github.io/language-partner-matcher/](https://v33r-5h4h.github.io/language-partner-matcher/)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Backend API**: \`${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Signaling Endpoint**: \`${{ secrets.WS_BASE_URL || 'ws://13.235.12.217:8000' }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "You can also download \`flutter-web-build.zip\` from the workflow artifacts or GitHub Releases to deploy onto any static host (S3/CloudFront/Nginx)." >> $GITHUB_STEP_SUMMARY
 
   # ─────────────────────────────────────────────────────────────
-  # JOB 4: Route APKs & Web to GitHub Releases
+  # JOB 4: Deploy Flutter Web to GitHub Pages
+  # ─────────────────────────────────────────────────────────────
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: build-web
+    runs-on: ubuntu-latest
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 5: Route APKs & Web to GitHub Releases
   # ─────────────────────────────────────────────────────────────
   release:
     name: Publish to GitHub Releases
@@ -224,7 +249,7 @@ jobs:
             ### 🌐 Language Partner Matcher — Build Assets
 
             #### 💻 Instant Web Interface Access
-            - **Live Web App**: [${{ secrets.WEB_APP_URL || (secrets.API_BASE_URL && format('{0}/web', secrets.API_BASE_URL)) || 'http://13.235.12.217:8000/web' }}](${{ secrets.WEB_APP_URL || (secrets.API_BASE_URL && format('{0}/web', secrets.API_BASE_URL)) || 'http://13.235.12.217:8000/web' }})
+            - **Live Web App (GitHub Pages)**: [https://v33r-5h4h.github.io/language-partner-matcher/](https://v33r-5h4h.github.io/language-partner-matcher/)
             - **Backend Endpoint**: `${{ secrets.API_BASE_URL || 'http://13.235.12.217:8000' }}`
             - **Commit**: `${{ github.sha }}`
             - **Branch/Tag**: `${{ github.ref_name }}`
