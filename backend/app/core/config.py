@@ -9,8 +9,14 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
+    ENVIRONMENT: str = "production"
+    TURN_DOMAIN: str = ""
+    TURN_SERVER_IP: str = ""
+    TURN_SHARED_SECRET: str = ""
+
     class Config:
         case_sensitive = True
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

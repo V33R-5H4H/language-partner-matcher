@@ -60,3 +60,4 @@ build/
 *.swp
 *.DS_Store
 Thumbs.db
+secrets.txt
