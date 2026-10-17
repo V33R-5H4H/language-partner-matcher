@@ -9,10 +9,10 @@
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io)
 [![WebRTC](https://img.shields.io/badge/WebRTC-Peer--to--Peer-333333?logo=webrtc)](https://webrtc.org)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)](https://www.docker.com)
-[![Web App](https://img.shields.io/badge/Live_Web_App-GitHub_Pages-brightgreen?logo=github)](https://v33r-5h4h.github.io/language-partner-matcher/)
+[![Web App](https://img.shields.io/badge/Live_Web_App-Browser_Access-brightgreen?logo=googlechrome)](http://13.235.12.217:8000/web/)
 
-> 🚀 **Live Web Application**: **[Launch in Browser (GitHub Pages)](https://v33r-5h4h.github.io/language-partner-matcher/)**  
-> *(No installation needed — runs directly in your browser)*
+> 🚀 **Live Web Application**: **[Launch in Browser (Live AWS Server)](http://13.235.12.217:8000/web/)**  
+> *(Runs directly in your browser — connected to the live AWS EC2 signaling backend)*
 
 ---
 

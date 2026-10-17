@@ -26,7 +26,8 @@ class ApiEndpoints {
   static String get baseUrl {
     const custom = String.fromEnvironment('API_BASE_URL');
     if (custom.isNotEmpty) return _sanitizeUrl(custom);
-    return 'http://localhost:8000';
+    // Default to active AWS EC2 server so mobile APKs connect out-of-the-box
+    return 'http://13.235.12.217:8000';
   }
 
   /// Base WebSocket URL for signaling (derived from API_BASE_URL or overridden).

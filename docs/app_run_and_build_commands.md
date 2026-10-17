@@ -62,9 +62,9 @@ flutter build appbundle --release --dart-define=API_BASE_URL=http://13.235.12.21
 - **Output File:** `test1/build/app/outputs/bundle/release/app-release.aab`
 
 #### 4. Web Production Bundle
-Generates minified CanvasKit and HTML/JS static assets:
+Generates minified CanvasKit and HTML/JS static assets (with `--base-href /web/` for EC2 hosting):
 ```bash
-flutter build web --release --dart-define=API_BASE_URL=http://13.235.12.217:8000
+flutter build web --release --base-href /web/ --dart-define=API_BASE_URL=http://13.235.12.217:8000
 ```
 - **Output Directory:** `test1/build/web/`
 
